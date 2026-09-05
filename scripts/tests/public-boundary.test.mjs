@@ -26,7 +26,7 @@ function fixture(run) {
     write('package-lock.json', { name: 'freddy-mcp', lockfileVersion: 3, packages: { '': { name: 'freddy-mcp', workspaces: ['packages/*'] } } });
     write('README.md', 'Public Folio and Fiken adapters.\n');
     git(root, 'add', '.'); git(root, 'commit', '--quiet', '-m', 'Public MCP source');
-    run({ root, write, run: () => spawnSync(process.execPath, [script, '--root', root], { encoding: 'utf8', env: environment(), windowsHide: true }) });
+    run({ root, write, run: (requestedRoot = root) => spawnSync(process.execPath, [script, '--root', requestedRoot], { encoding: 'utf8', env: environment(), windowsHide: true }) });
   } finally {
     assert.equal(realpathSync(root), canonical, 'Temporary directory changed; cleanup refused.');
     const rel = relative(realpathSync(tmpdir()), canonical);
@@ -133,4 +133,17 @@ test('lightweight and annotated tags that resolve to public commits remain valid
   git(root, 'tag', 'folio-mcp-v0.1.0');
   git(root, 'tag', '-a', '-m', 'Public Fiken release', 'fiken-mcp-v0.1.0');
   assert.equal(run().status, 0, 'Public commit release tags must remain allowed.');
+}));
+test('the same repository remains valid through equivalent Windows drive casing', () => fixture(({ root, run }) => {
+  const alternate = process.platform === 'win32' ? root[0].toLowerCase() + root.slice(1) : join(root, '.');
+  const result = run(alternate);
+  assert.equal(result.status, 0, 'An equivalent filesystem path must not be mistaken for a different Git repository.');
+}));
+
+test('a different configured Git working directory remains forbidden', () => fixture(({ root, write, run }) => {
+  write('different-root/README.md', 'Synthetic different working directory.');
+  git(root, 'config', 'core.worktree', join(root, 'different-root'));
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Git root differs/);
 }));
