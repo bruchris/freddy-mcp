@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -33,6 +33,14 @@ function allowedDirectory(path) {
   if ([...rootFiles].some(file => file.startsWith(path + '/'))) return true;
   if (packageDirectories.some(directory => directory === path || directory.startsWith(path + '/'))) return true;
   return /^packages\/(folio|fiken)-mcp\/(src|tests)(?:\/.*)?$/.test(path) && safeComponents(path);
+}
+function sameDirectory(first, second) {
+  if (first === second) return true;
+  // Node preserves a caller's Windows drive casing while Git normalizes it.
+  // Compare filesystem identity rather than lowercasing possibly case-sensitive paths.
+  const left = statSync(first, { bigint: true });
+  const right = statSync(second, { bigint: true });
+  return left.isDirectory() && right.isDirectory() && left.ino !== 0n && left.dev === right.dev && left.ino === right.ino;
 }
 function isolatedGitEnvironment() {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
@@ -173,7 +181,7 @@ export function checkPublicBoundary(directory = process.cwd()) {
   const metadata = join(root, '.git');
   if (!existsSync(metadata) || !lstatSync(metadata).isDirectory() || lstatSync(metadata).isSymbolicLink()) refuse('repository', 'a standalone Git directory is required');
   const git = gitReader(root);
-  if (realpathSync(git('rev-parse', '--show-toplevel').trim()) !== root) refuse('repository', 'Git root differs from the inspected directory');
+  if (!sameDirectory(realpathSync(git('rev-parse', '--show-toplevel').trim()), root)) refuse('repository', 'Git root differs from the inspected directory');
   if (git('rev-parse', '--is-shallow-repository').trim() !== 'false') refuse('history', 'shallow history cannot be verified');
   if (existsSync(join(metadata, 'info', 'grafts'))) refuse('history', 'grafted history cannot be verified');
   // git log omits refs to tree/blob objects, but those objects are still public
