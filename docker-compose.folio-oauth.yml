@@ -1,0 +1,9 @@
+# Optional owner OAuth for folio; combine with docker-compose.yml.
+services:
+  folio:
+    volumes:
+      - type: bind
+        source: ${FOLIO_OAUTH_ENV_FILE:?Set absolute path to private folio OAuth env file}
+        target: /app/packages/folio-mcp/.env
+        bind:
+          create_host_path: false

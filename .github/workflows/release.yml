@@ -1,0 +1,68 @@
+name: Release package
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to publish
+        required: true
+        type: choice
+        options: [folio, fiken]
+permissions:
+  contents: read
+concurrency:
+  group: public-package-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: vars.PUBLIC_RELEASE_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: npm
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      PACKAGE: ${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@11.11.1
+      - id: preflight
+        run: node scripts/release-preflight.mjs "$PACKAGE"
+      - name: Require unused release tag
+        run: |
+          node --input-type=module <<'JS'
+          const response = await fetch("https://api.github.com/repos/" + process.env.GITHUB_REPOSITORY + "/git/ref/tags/" + process.env.RELEASE_TAG, {headers: {Authorization: "Bearer " + process.env.GH_TOKEN}});
+          if (response.status !== 404) throw new Error("Release tag already exists or remote verification failed; stop before publishing.");
+          JS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.preflight.outputs.tag }}
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:tooling
+      - run: |
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          cd "$RUNNER_TEMP/gitleaks"
+          curl --fail --location --silent --show-error -O https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          curl --fail --location --silent --show-error -O https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt
+          grep ' gitleaks_8.30.1_linux_x64.tar.gz$' gitleaks_8.30.1_checksums.txt | sha256sum --check
+          tar -xzf gitleaks_8.30.1_linux_x64.tar.gz gitleaks
+      - run: node scripts/secret-scan.mjs --require-gitleaks
+        env:
+          GITLEAKS_BIN: ${{ runner.temp }}/gitleaks/gitleaks
+      - run: npm audit --audit-level=high
+      - run: npm publish --workspace="@bruchris/${PACKAGE}-mcp" --access=public --provenance
+      - run: gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file "packages/${PACKAGE}-mcp/CHANGELOG.md"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.preflight.outputs.tag }}

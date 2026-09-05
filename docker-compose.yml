@@ -1,0 +1,31 @@
+services:
+  folio:
+    build:
+      context: .
+      dockerfile: deploy/folio.Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      MCP_AUTH_TOKEN: ${FOLIO_MCP_AUTH_TOKEN:-${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN}}
+      MCP_ALLOWED_ORIGINS: ${FOLIO_MCP_ALLOWED_ORIGINS:-}
+      FOLIO_API_KEY: ${FOLIO_API_KEY:-}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+  fiken:
+    build:
+      context: .
+      dockerfile: deploy/fiken.Dockerfile
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3001"
+      MCP_AUTH_TOKEN: ${FIKEN_MCP_AUTH_TOKEN:-${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN}}
+      MCP_ALLOWED_ORIGINS: ${FIKEN_MCP_ALLOWED_ORIGINS:-}
+      FIKEN_API_TOKEN: ${FIKEN_API_TOKEN:-}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]

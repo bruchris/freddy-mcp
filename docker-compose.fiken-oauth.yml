@@ -1,0 +1,9 @@
+# Optional owner OAuth for fiken; combine with docker-compose.yml.
+services:
+  fiken:
+    volumes:
+      - type: bind
+        source: ${FIKEN_OAUTH_ENV_FILE:?Set absolute path to private fiken OAuth env file}
+        target: /app/packages/fiken-mcp/.env
+        bind:
+          create_host_path: false
